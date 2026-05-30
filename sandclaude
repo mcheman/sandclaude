@@ -77,6 +77,7 @@ DOCKER_ARGS=(
     -v "$HOME/.claude.json:/home/claude/.claude.json"
     -v "$HOME/.config/gh:/home/claude/.config/gh:ro"
     -v "$HOME/.config/.jira:/home/claude/.config/.jira:ro"
+    -v "$HOME/.gitconfig:/home/claude/.gitconfig:ro"
     ${GH_TOKEN:+-e GH_TOKEN="$GH_TOKEN"}
     ${JIRA_API_TOKEN:+-e JIRA_API_TOKEN="$JIRA_API_TOKEN"}
     -v "$WORKSPACE:$WORKSPACE"
