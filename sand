@@ -3,21 +3,29 @@ set -euo pipefail
 
 IMAGE_NAME="sandclaude"
 CLAUDE_CONFIG="$HOME/.claude"
+CODEX_CONFIG="$HOME/.codex"
 
 usage() {
-    echo "Usage: sandclaude [-s] [-b] [-r] [-h] [workspace]"
+    echo "Usage: sand {codex|claude} [-s] [-b] [-r] [-h] [workspace]"
     echo ""
-    echo "Run Claude Code in a Docker container."
+    echo "Run Codex or Claude Code in a Podman container."
     echo ""
     echo "Options:"
-    echo "  -s    Open bash shell instead of claude"
+    echo "  -s    Open bash instead of an agent"
     echo "  -b    Force rebuild of the Docker image"
-    echo "  -r    Resume the previous claude session"
+    echo "  -r    Resume a previous session for the selected agent"
     echo "  -h    Show this help message"
     echo ""
     echo "Arguments:"
     echo "  workspace   Path to mount inside the container (default: current directory)"
 }
+
+AGENT="${1:-}"
+case "$AGENT" in
+    codex|claude) shift ;;
+    -h) usage; exit 0 ;;
+    *) usage; exit 1 ;;
+esac
 
 SHELL_MODE=false
 FORCE_BUILD=false
@@ -35,7 +43,7 @@ shift $((OPTIND - 1))
 
 WORKSPACE="$(readlink -f "${1:-$(pwd)}")"
 
-if [ ! -f "$CLAUDE_CONFIG/.credentials.json" ]; then
+if [ "$AGENT" = claude ] && [ ! -f "$CLAUDE_CONFIG/.credentials.json" ]; then
     echo "Error: No Claude credentials found at $CLAUDE_CONFIG/.credentials.json"
     echo "Run 'claude' locally first to log in via OAuth."
     exit 1
@@ -44,12 +52,12 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 
 build_image() {
-    if [ ! -f "$SCRIPT_DIR/Dockerfile" ]; then
-        echo "Error: No Dockerfile found in $SCRIPT_DIR"
+    if [ ! -f "$SCRIPT_DIR/Containerfile" ]; then
+        echo "Error: No Containerfile found in $SCRIPT_DIR"
         exit 1
     fi
     echo "Building $IMAGE_NAME image..."
-    docker build \
+    podman build \
         --build-arg USER_ID="$(id -u)" \
         --build-arg GROUP_ID="$(id -g)" \
         -t "$IMAGE_NAME" \
@@ -58,22 +66,29 @@ build_image() {
 
 if [ "$FORCE_BUILD" = true ]; then
     build_image
-elif ! docker image inspect "$IMAGE_NAME" &>/dev/null; then
+elif ! podman image inspect "$IMAGE_NAME" &>/dev/null; then
     build_image
-elif [ -f "$SCRIPT_DIR/Dockerfile" ] && \
-     [ "$(stat -c %Y "$SCRIPT_DIR/Dockerfile")" -gt "$(docker inspect -f '{{.Created}}' "$IMAGE_NAME" 2>/dev/null | xargs -I{} date -d {} +%s 2>/dev/null || echo 0)" ]; then
+elif [ -f "$SCRIPT_DIR/Containerfile" ] && \
+     [ "$(stat -c %Y "$SCRIPT_DIR/Containerfile")" -gt "$(podman inspect -f '{{.Created}}' "$IMAGE_NAME" 2>/dev/null | xargs -I{} date -d {} +%s 2>/dev/null || echo 0)" ]; then
     build_image
 fi
 
 clear
-echo "Starting Claude Code in: $WORKSPACE"
+echo "Starting in: $WORKSPACE"
 
 # Extract gh token from keyring for use inside the container
 GH_TOKEN="$(gh auth token 2>/dev/null || true)"
 
 DOCKER_ARGS=(
     --rm -it
+    --network=host
+    --userns=keep-id
+    --security-opt label=disable
+    -e "CODEX_HOME=$CODEX_CONFIG"
     -v "$CLAUDE_CONFIG:/home/claude/.claude"
+    -v "$CODEX_CONFIG:$CODEX_CONFIG"
+    -v "$HOME/.cache/go-build:/home/claude/.cache/go-build"
+    -v "$HOME/go:/home/claude/go"
     -v "$HOME/.claude.json:/home/claude/.claude.json"
     -v "$HOME/.config/gh:/home/claude/.config/gh:ro"
     -v "$HOME/.config/.jira:/home/claude/.config/.jira:ro"
@@ -85,9 +100,13 @@ DOCKER_ARGS=(
 )
 
 if [ "$SHELL_MODE" = true ]; then
-    exec docker run "${DOCKER_ARGS[@]}" --entrypoint /bin/bash "$IMAGE_NAME"
+    exec podman run "${DOCKER_ARGS[@]}" --entrypoint /bin/bash "$IMAGE_NAME"
 elif [ "$RESUME" = true ]; then
-    exec docker run "${DOCKER_ARGS[@]}" "$IMAGE_NAME" --resume
+    if [ "$AGENT" = codex ]; then
+        exec podman run "${DOCKER_ARGS[@]}" "$IMAGE_NAME" codex resume
+    else
+        exec podman run "${DOCKER_ARGS[@]}" "$IMAGE_NAME" claude --resume
+    fi
 else
-    exec docker run "${DOCKER_ARGS[@]}" "$IMAGE_NAME"
+    exec podman run "${DOCKER_ARGS[@]}" "$IMAGE_NAME" "$AGENT"
 fi

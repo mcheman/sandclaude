@@ -1,11 +1,12 @@
 # sandclaude
 
-My personal, opinionated way to run [Claude Code](https://docs.anthropic.com/en/docs/claude-code) without restrictions in a sandboxed Docker container. The image is tailored to the tools I use on a daily basis — it's not meant to be a generic solution for others, but feel free to fork and adapt it to your own needs.
+My personal, opinionated way to run [Codex](https://developers.openai.com/codex/) or [Claude Code](https://docs.anthropic.com/en/docs/claude-code) in a sandboxed Podman container. The image is tailored to the tools I use on a daily basis — it's not meant to be a generic solution for others, but feel free to fork and adapt it to your own needs.
 
 ## Prerequisites
 
-- Docker
-- Claude Code installed locally (for initial OAuth login)
+- Podman
+- Codex installed and authenticated locally (for reusing your login and configuration)
+- Claude Code installed and authenticated locally if you want to use Claude
 - `gh` CLI authenticated (optional, for GitHub access inside the container)
 
 ## Installation
@@ -13,28 +14,28 @@ My personal, opinionated way to run [Claude Code](https://docs.anthropic.com/en/
 Clone the repo and make the script executable:
 
 ```bash
-chmod +x sandclaude
+chmod +x sand
 ```
 
 Optionally, add it to your PATH:
 
 ```bash
-sudo ln -s "$(pwd)/sandclaude" /usr/local/bin/sandclaude
+sudo ln -s "$(pwd)/sand" /usr/local/bin/sand
 ```
 
 ## Usage
 
 ```
-sandclaude [-s] [-b] [-r] [-h] [workspace]
+sand {codex|claude} [-s] [-b] [-r] [-h] [workspace]
 ```
 
 ### Options
 
 | Flag | Description |
 |------|-------------|
-| `-s` | Open a bash shell instead of Claude |
+| `-s` | Open a bash shell instead of an agent |
 | `-b` | Force rebuild of the Docker image |
-| `-r` | Resume the previous Claude session |
+| `-r` | Resume a previous session for the selected agent |
 | `-h` | Show help |
 
 ### Arguments
@@ -46,17 +47,20 @@ sandclaude [-s] [-b] [-r] [-h] [workspace]
 ### Examples
 
 ```bash
-# Run Claude Code in the current directory
-sandclaude
+# Run Codex in the current directory
+sand codex
 
-# Run Claude Code in a specific project
-sandclaude ~/projects/myapp
+# Run Codex in a specific project
+sand codex ~/projects/myapp
+
+# Run Claude Code
+sand claude
 
 # Open a shell in the container for debugging
-sandclaude -s
+sand codex -s
 
-# Force rebuild the image and resume the last session
-sandclaude -b -r
+# Force rebuild the image and resume a Codex session
+sand codex -b -r
 ```
 
 ## What's in the container
@@ -73,10 +77,11 @@ The Docker image is based on Ubuntu 24.04 and includes:
 
 ## How it works
 
-1. The script checks for Claude credentials at `~/.claude/.credentials.json` (run `claude` locally first to authenticate via OAuth).
-2. It builds the Docker image automatically on first run or when the Dockerfile changes.
-3. Your workspace, Claude config, GitHub config, and Jira config are mounted into the container.
-4. Claude Code runs as a non-root user with UID/GID matching your host user.
+1. Install and authenticate the agent you want to use locally.
+2. The script builds the container image automatically on first run or when the Containerfile changes.
+3. Your workspace and agent configuration are mounted into the container.
+4. The first argument selects Codex or Claude Code.
+5. The container uses the host network so browser-based OAuth callbacks and host VPN routes work.
 
 ## License
 
